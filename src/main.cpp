@@ -5268,7 +5268,15 @@ bool static ProcessMessage(CNode* pfrom, string strCommand, CDataStream& vRecv, 
             // it, if the remote node sends a ping once per second and this node takes 5
             // seconds to respond to each, the 5th ping the remote sends would appear to
             // return very quickly.
-            pfrom->PushMessage("pong", nonce);
+            if (pfrom->nVersion >= PING_TIME_VERSION) {
+                int64_t nTime;
+                int64_t nNow = GetAdjustedTime();
+                vRecv >> nTime;
+                AddTimeData(pfrom->addr, nTime);
+                pfrom->PushMessage("pong", nonce, nNow);
+            }
+            else
+                pfrom->PushMessage("pong", nonce);
         }
     }
 
@@ -5325,6 +5333,11 @@ bool static ProcessMessage(CNode* pfrom, string strCommand, CDataStream& vRecv, 
         }
         if (bPingFinished) {
             pfrom->nPingNonceSent = 0;
+        }
+        if (pfrom->nVersion >= PING_TIME_VERSION) {
+            int64_t nTime;
+            vRecv >> nTime;
+            AddTimeData(pfrom->addr, nTime);
         }
     }
 
@@ -5609,7 +5622,12 @@ bool SendMessages(CNode* pto, bool fSendTrickle)
             pto->nPingUsecStart = GetTimeMicros();
             if (pto->nVersion > BIP0031_VERSION) {
                 pto->nPingNonceSent = nonce;
-                pto->PushMessage("ping", nonce);
+                if (pto->nVersion >= PING_TIME_VERSION) {
+                    int64_t nNow = GetAdjustedTime();
+                    pto->PushMessage("pong", nonce, nNow);
+                }
+                else
+                    pto->PushMessage("ping", nonce);
             } else {
                 // Peer is too old to support ping command with nonce, pong will never arrive.
                 pto->nPingNonceSent = 0;
